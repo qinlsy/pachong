@@ -1,0 +1,191 @@
+import re
+import requests
+import time
+from lxml import html
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import re
+from concurrent.futures import ThreadPoolExecutor
+
+
+import urllib3
+
+urllib3.disable_warnings()
+from fake_useragent import UserAgent
+
+from goose3 import Goose
+import json
+
+# id = 3038-3051
+etree = html.etree
+
+
+pyurl=[
+# 'https://www.purepeople.com/tag/people-usa_t315?page=1',
+# 'https://www.purepeople.com/tag/famille-royale_t164?page=1',
+# 'https://www.purepeople.com/tag/beaute_t55?page=1',
+# 'https://www.purepeople.com/tag/mode_t272?page=1',
+# 'https://www.purepeople.com/tag/cinema_t90/articles?page=1',
+# 'https://www.purepeople.com/tag/tele_t388/articles?page=1',
+# 'https://www.purepeople.com/tag/musique_t280/articles?page=1',
+
+    # ======================================
+
+# 'https://www.purepeople.com/tag/photo_t317?page=1',
+# 'https://www.purepeople.com/tag/mariage_t265?page=1',
+# 'https://www.purepeople.com/tag/naissances_t282?page=1',
+# 'https://www.purepeople.com/tag/enfant-de-star_t153?page=1',
+# 'https://www.purepeople.com/tag/justice_t232?page=1',
+'https://www.purepeople.com/tag/divorce_t129?page=1'
+]
+
+def get_html(url):
+    try:
+        r_text = requests.get(url=url, headers=headers, timeout=(5, 10), verify=False)
+        r_text.encoding = r_text.apparent_encoding
+        r_text = r_text.text
+        return r_text
+    except:
+        return None
+
+
+def save(info):
+    # with open(f'{id}.txt', 'a+', encoding='utf-8') as f:
+    with open(f'../data/{id}.txt', 'a+', encoding='utf-8') as f:
+        f.write(json.dumps(info, ensure_ascii=False) + '\n')
+        print(info)
+
+
+def run(url):
+    try:
+        g = Goose({'browser_user_agent': headers})
+        url = "".join(url).strip()  # 删除头尾空格
+        # print(f"开始解析{url}")
+        html = get_html(url)
+        # 获取文章内容
+        article = g.extract(url, html)
+        # 标题
+        title = article.title
+
+        #内容
+        # txt = article.cleaned_text
+
+        thtml = etree.HTML(html)
+        txta = thtml.xpath('//*[@id="main-content"]/div[3]/div[1]/section[1]/div[2]/text()')
+        txtb = thtml.xpath('//*[@id="article-content"]/div[@class="block-text"]/p/text()')
+        # r_text.findall('')
+        str = ''
+        for i in txtb:
+            str = str + i
+        txt = txta[0].replace('\n', '') + str
+
+        if title != "" and txt != "":
+            dit = {}
+            dit["title"] = article.title
+            dit["txt"] = txt
+            dit["url"] = url
+            save(dit)
+        else:
+            print("title or txt 有空跳过")
+    except:
+        print(url,"-----失败")
+        pass
+def test(url):
+    try:
+        run(url)
+    except Exception as e:
+        print(e)
+
+
+if __name__ == '__main__':
+    headers = {'user-agent': UserAgent().random}
+    id = 3050
+    for purl in pyurl:
+
+        # url = 'https://www.haitilibre.com/cat-8-sports-1.html'
+        url = purl
+
+        r_text = requests.get(url=url, headers=headers, timeout=(5, 10), verify=False)
+        r_text.encoding = r_text.apparent_encoding
+        r_text = r_text.text
+
+        href_page = re.findall(r'pagination-item">(.*?)</span>', r_text)
+        if href_page == []:
+            href_page = re.findall(r'<a class="pagination-item"(.*?)</a>', r_text)
+
+        print(href_page)
+
+        # href = re.findall(r'\d{2,}', href[0])
+        page = [int(i.split('>')[-1]) for i in href_page]
+        # maxnu = int(href[-1])
+        maxnu = max(page)
+        print('页数：',maxnu,'数字：',page)
+
+        try:
+            # for nu in range(1,2):
+            for nu in range(1, maxnu):
+                # url = f'https://www.icihaiti.com/flash-infos-{nu}.html'
+                url = purl[:-1]+str(nu)
+
+                # r_text = requests.get(url=url, headers=headers, timeout=(5, 10), verify=False)
+                # r_text.encoding = r_text.apparent_encoding
+                # r_text = r_text.text
+                # href = re.findall('valign="top" align="left" class="text"><a href="(.*?)"><b>', r_text)
+                # href = etree.HTML(r_text).xpath('//*[@id="main-content"]/div[3]/div[1]/section/div[2]/div/div/h2/a/@href')
+
+                chrome_options = Options()
+
+                prefs = {
+                'profile.managed_default_content_settings.images': 2,
+                'permissions.default.stylesheet': 2
+                }
+                chrome_options.add_experimental_option('prefs', prefs)
+                # chrome_options.add_argument("blink-settings=imagesEnabled=false")
+                driver = webdriver.Chrome(chrome_options=chrome_options)
+
+                # url = 'https://www.purepeople.com/tag/interview_t225?page=1'
+                driver.get(url)
+
+                # 显式等待使WebdDriver等待某个条件成立时继续执行，否则在达到最大时长时抛出超时异常（TimeoutException
+                element = WebDriverWait(driver, 5, 0.5).until(
+                    EC.presence_of_element_located((By.XPATH, '//*[@id="cmp-main"]/button[2]'))
+                )
+                # 定位到要悬停的元素
+                above = driver.find_element(By.XPATH, '//*[@id="cmp-main"]/button[2]')
+                # 对定位到的元素执行鼠标悬停操作
+                ActionChains(driver).click(above).perform()
+                url_txt = driver.page_source
+                href =  etree.HTML(url_txt).xpath('//*[@id="main-content"]/div[3]/div[1]/section[1]/div[2]/div/div/h2/a/@href')
+
+                driver.quit()
+                href = re.findall('<a class="xXx  news-card-link" href="(.*?)"'" cmp-ltrk=", url_txt)
+                print(href,len(href))
+
+                # top = 'https://www.icihaiti.com'
+                top = 'https://www.purepeople.com'
+
+                # allhref = []
+                cc=1
+
+                with ThreadPoolExecutor(max_workers=10) as pool:
+
+                    for i in href:
+                        try:
+                            print(f"正在爬取{id}数据，{nu}页第{cc}条数据，爬取进度{nu}/{maxnu}")
+                            pool.submit(run,top + i)
+                            cc += 1
+                        except:
+                            print(f'{id}数据，{nu}页第{cc}条数据,{top + i}出错------')
+                            pass
+        except:
+            print('id ',id,'-----',url,'出错！！！！')
+            pass
+            # for count, line in enumerate(open(f'./{id}.txt', 'rb').readlines()):
+        for count, line in enumerate(open(f'../data/{id}.txt', 'rb').readlines()):
+            count += 1
+        print('行数:', count)
+        id +=1
