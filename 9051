@@ -1,0 +1,169 @@
+import re
+import requests
+import time
+from lxml import html
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.chrome.options import Options
+import re
+from concurrent.futures import ThreadPoolExecutor
+import urllib3
+urllib3.disable_warnings()
+from fake_useragent import UserAgent
+from goose3 import Goose
+import json
+import time
+
+
+# id = 3038-3051
+# etree = html.etree
+from lxml import etree
+from retrying  import retry
+
+# id 9051===9060
+pyurl=[
+    # 'https://www.breizh-info.com/category/actualites-a-la-une/',
+    # 'https://www.breizh-info.com/category/culture-histoire-patrimoine/actualite-culturelle/',
+   # 'https://www.breizh-info.com/category/culture-histoire-patrimoine/actualite-historique/',
+   #  'https://www.breizh-info.com/category/actualite-economique/',
+   #  'https://www.breizh-info.com/category/actualite-environnementale/',
+   #  'https://www.breizh-info.com/category/actualite-politique/',
+   #  'https://www.breizh-info.com/category/actualite-internationale/',
+   #  'https://www.breizh-info.com/category/actualite-societale/societal/',
+
+    # 'https://www.breizh-info.com/category/actualite-societale/ensauvagement/',
+    # 'https://www.breizh-info.com/category/actualite-societale/sante/',
+'https://www.breizh-info.com/category/lemag/'
+]
+
+def get_html(url):
+    try:
+        r_text = requests.get(url=url, headers=headers, timeout=(5, 15), verify=False)
+        r_text.encoding = r_text.apparent_encoding
+        r_text = r_text.text
+        return r_text
+    except:
+        return None
+
+def save(info):
+    # with open(f'{id}.txt', 'a+', encoding='utf-8') as f:
+    with open(f'../data/fr/{id}.txt', 'a+', encoding='utf-8') as f:
+        f.write(json.dumps(info, ensure_ascii=False) + '\n')
+        print(info)
+
+# @retry(stop_max_attempt_number = 5)
+def run(url):
+    try:
+        g = Goose({'browser_user_agent': headers})
+        url = "".join(url).strip()  # 删除头尾空格
+        # print(f"开始解析{url}")
+        html = get_html(url)
+        i = 1
+        while html is None:
+
+            html = get_html(url)
+            i += 1
+            if i > 10:
+                break
+        # 获取文章内容
+        article = g.extract(url, html)
+        # 标题
+        title = article.title
+        txt = article.cleaned_text
+        # txta = etree.HTML(html)
+        # txt = txta.xpath('//*[@id="postfullcontent"]/div/p/text()')
+        if title != "" and txt != "":
+            dit = {}
+            dit["title"] = article.title
+            dit["txt"] = article.cleaned_text
+            dit["url"] = url
+            save(dit)
+            # print(dit)
+        else:
+            print("title or txt 有空跳过")
+    except:
+        pass
+
+def test(url):
+    try:
+        run(url)
+    except Exception as e:
+        print(e)
+
+
+if __name__ == '__main__':
+    headers = {'user-agent': UserAgent().random}
+    id = 9064
+    for purl in pyurl:
+
+        # url = 'https://www.haitilibre.com/cat-8-sports-1.html'
+        url = purl
+
+        # a_text = get_html(url)
+        r_text = requests.get(url=url, headers=headers, timeout=(5, 10), verify=False)
+        r_text.encoding = r_text.apparent_encoding
+        r_text = r_text.text
+        ci = 1
+        while r_text is None:
+            # i = 1
+            r_text = get_html(url)
+            ci += 1
+            if ci > 20:
+                break
+        html = etree.HTML(r_text)
+        href_page = html.xpath('//*[@id="contenuprincipal"]/div/nav/a[last()-1]/text()')[0]
+
+        # href_page = re.findall(r'pagination-item">(.*?)</span>', r_text)
+        # maxnu = int(href[-1])
+        maxnu = int(href_page)
+        print('页数：',maxnu)
+
+        try:
+
+            for nu in range(1, maxnu):
+                url = purl + f'page/{nu}/'
+                r_text = get_html(url)
+                # print(r_text)
+
+                ci = 1
+                while r_text is None:
+                    # i = 1
+                    r_text = get_html(url)
+                    ci += 1
+                    if ci > 20:
+                        print('请求超过20次，跳过')
+                        break
+                # print(r_text)
+                href = etree.HTML(r_text).xpath('//*[@id="contenuprincipal"]/div/div[1]/article/div/h2/a/@href')
+                                                # '//*[@id="contenuprincipal"]/div/div[1]/article[1]/div/h2/a'
+                print('网址：',href)
+
+                # top = 'https://www.icihaiti.com'
+                # top = 'https://www.purepeople.com'
+
+                # allhref = []
+                cc=1
+
+                with ThreadPoolExecutor(max_workers=10) as pool:
+
+                    for i in href:
+                        try:
+                            print(f"正在爬取{id}数据，{nu}页第{cc}条数据，爬取进度{nu}/{maxnu}")
+                            pool.submit(run, i)
+                            cc += 1
+                        except:
+                            print(f'{id}数据，{nu}页第{cc}条数据,{ i}出错------')
+                            pass
+        except:
+            print('id ',id,'-----',url,'出错！！！！')
+            err = f'{id}数据，{nu}页第{cc}条数据,{i}出错------'
+            # writeerr(err)
+            pass
+            # for count, line in enumerate(open(f'./{id}.txt', 'rb').readlines()):
+        # for count, line in enumerate(open(f'../data/{id}.txt', 'rb').readlines()):
+        #     count += 1
+        # print('行数:', count)
+        id +=1
